@@ -1,7 +1,7 @@
 <?php
 // includes/db.php - 100% WORKING VERSION
 
-$servername = "localhost";
+$servername = "srv1837.hstgr.io";
 $username   = "u329947844_srivari";
 $password   = "Srivari@29";                    // ← Your REAL password
 $dbname     = "u329947844_srivari";        // ← Your REAL database name
