@@ -1,5 +1,5 @@
 <?php
-// pay-emi.php - FIXED VERSION (Corrected SQL query)
+// pay-emi.php - WITH SIMPLE SEQUENTIAL BILL NUMBERS
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
@@ -26,7 +26,7 @@ if ($emi_id == 0 || $member_id == 0) {
     exit;
 }
 
-// Fetch EMI with member details - FIXED QUERY (removed m.emi_amount)
+// Fetch EMI with member details
 $sql = "SELECT es.*, m.customer_name, m.agreement_number 
         FROM emi_schedule es 
         JOIN members m ON es.member_id = m.id 
@@ -43,6 +43,36 @@ if (!$emi) {
     header("Location: manage-members.php");
     exit;
 }
+
+// Function to get next bill number (simple sequential)
+function getNextBillNumber($conn) {
+    // Get the highest bill number from emi_schedule
+    $sql = "SELECT emi_bill_number FROM emi_schedule 
+            WHERE emi_bill_number IS NOT NULL AND emi_bill_number != ''
+            ORDER BY id DESC LIMIT 1";
+    $result = $conn->query($sql);
+    
+    if ($result && $row = $result->fetch_assoc()) {
+        $last_bill = $row['emi_bill_number'];
+        // Extract numeric part from bill number
+        if (preg_match('/^(\d+)$/', $last_bill, $matches)) {
+            $next_num = intval($matches[1]) + 1;
+            return str_pad($next_num, 3, '0', STR_PAD_LEFT);
+        } elseif (preg_match('/^BILL-(\d+)$/', $last_bill, $matches)) {
+            $next_num = intval($matches[1]) + 1;
+            return str_pad($next_num, 3, '0', STR_PAD_LEFT);
+        } elseif (is_numeric($last_bill)) {
+            $next_num = intval($last_bill) + 1;
+            return str_pad($next_num, 3, '0', STR_PAD_LEFT);
+        }
+    }
+    // Start from 281 as per your last bill
+    return "281";
+}
+
+// Get next bill number for display
+$next_bill_number = getNextBillNumber($conn);
+$next_bill_number_display = $next_bill_number;
 
 // Handle Undo with Reason
 if ($is_undo && $_SERVER['REQUEST_METHOD'] == 'POST') {
@@ -84,6 +114,26 @@ if (!$is_undo && $_SERVER['REQUEST_METHOD'] == 'POST') {
     $upi_amount = 0;
     $collected_by = isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : null;
     
+    // Validate bill number
+    if (empty($bill_number)) {
+        $_SESSION['error'] = "Bill number is required.";
+        header("Location: pay-emi.php?emi_id=$emi_id&member=$member_id");
+        exit;
+    }
+    
+    // Check if bill number already exists
+    $check_sql = "SELECT id FROM emi_schedule WHERE emi_bill_number = ? AND id != ?";
+    $check_stmt = $conn->prepare($check_sql);
+    $check_stmt->bind_param("si", $bill_number, $emi_id);
+    $check_stmt->execute();
+    $check_result = $check_stmt->get_result();
+    if ($check_result->num_rows > 0) {
+        $_SESSION['error'] = "Bill number $bill_number already exists. Please use a different bill number.";
+        header("Location: pay-emi.php?emi_id=$emi_id&member=$member_id");
+        exit;
+    }
+    $check_stmt->close();
+    
     // Validate payment amounts
     if ($payment_type == 'cash') {
         $cash_amount = floatval($_POST['cash_amount'] ?? $emi['emi_amount']);
@@ -105,12 +155,6 @@ if (!$is_undo && $_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     }
 
-    if (empty($bill_number)) {
-        $_SESSION['error'] = "Bill number is required.";
-        header("Location: pay-emi.php?emi_id=$emi_id&member=$member_id");
-        exit;
-    }
-
     $sql = "UPDATE emi_schedule 
             SET status = 'paid', 
                 paid_date = ?, 
@@ -129,7 +173,7 @@ if (!$is_undo && $_SERVER['REQUEST_METHOD'] == 'POST') {
         if ($payment_type == 'both') {
             $type_display = "Cash: ₹" . number_format($cash_amount, 2) . " + UPI: ₹" . number_format($upi_amount, 2);
         }
-        $_SESSION['success'] = "EMI paid successfully! Type: $type_display | Bill: $bill_number";
+        $_SESSION['success'] = "EMI paid successfully! Bill: $bill_number | Type: $type_display";
     } else {
         $_SESSION['error'] = "Failed to record payment.";
     }
@@ -142,6 +186,32 @@ if (!$is_undo && $_SERVER['REQUEST_METHOD'] == 'POST') {
 <!DOCTYPE html>
 <html lang="en" dir="ltr" data-startbar="dark" data-bs-theme="light">
 <?php include 'includes/head.php'; ?>
+<style>
+    .bill-number-input {
+        font-family: monospace;
+        font-size: 18px;
+        font-weight: bold;
+    }
+    .bill-suggestion {
+        font-size: 12px;
+        color: #6c757d;
+        margin-top: 4px;
+    }
+    .bill-suggestion .suggested {
+        color: #0d6efd;
+        cursor: pointer;
+        text-decoration: underline;
+        font-weight: bold;
+    }
+    .bill-suggestion .suggested:hover {
+        color: #0a58ca;
+    }
+    .current-bill {
+        background: #e7f1ff;
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
+</style>
 <body>
     <?php include 'includes/topbar.php'; ?>
 
@@ -223,8 +293,15 @@ if (!$is_undo && $_SERVER['REQUEST_METHOD'] == 'POST') {
                                         <div class="row mb-3">
                                             <div class="col-md-6">
                                                 <label class="form-label">Bill Number <span class="text-danger">*</span></label>
-                                                <input type="text" class="form-control" name="bill_number" 
-                                                       value="BILL-<?= date('Ymd-His'); ?>" required>
+                                                <input type="text" class="form-control bill-number-input" 
+                                                       name="bill_number" id="billNumber"
+                                                       value="<?= $next_bill_number_display; ?>" 
+                                                       placeholder="Enter bill number (e.g., 281, 282...)"
+                                                       required>
+                                                <div class="bill-suggestion">
+                                                    Next suggested: <span class="suggested" onclick="useSuggestedBill()"><?= $next_bill_number_display; ?></span>
+                                                    <br><small>Enter any number (simple sequential)</small>
+                                                </div>
                                             </div>
                                             <div class="col-md-6">
                                                 <label class="form-label">Paid Date <span class="text-danger">*</span></label>
@@ -273,12 +350,12 @@ if (!$is_undo && $_SERVER['REQUEST_METHOD'] == 'POST') {
                                                     <label class="form-label">UPI Amount (₹)</label>
                                                     <input type="number" step="0.01" class="form-control" 
                                                            name="upi_amount_both" id="upiAmountBoth"
-                                                           value="0">
+                                                           value="<?= $emi['emi_amount']; ?>">
                                                 </div>
                                             </div>
                                             <div class="mt-2">
                                                 <small class="text-muted">
-                                                    Total: <span id="totalAmount">₹0.00</span> | 
+                                                    Total: <span id="totalAmount">₹<?= number_format($emi['emi_amount'], 2); ?></span> | 
                                                     EMI Amount: ₹<?= number_format($emi['emi_amount'], 2); ?>
                                                 </small>
                                             </div>
@@ -406,6 +483,20 @@ if (!$is_undo && $_SERVER['REQUEST_METHOD'] == 'POST') {
                 }
             });
         });
+
+        // Use suggested bill number
+        function useSuggestedBill() {
+            const suggested = '<?= $next_bill_number_display; ?>';
+            document.getElementById('billNumber').value = suggested;
+            document.getElementById('billNumber').focus();
+        }
+
+        // Auto-focus and select bill number
+        const billInput = document.getElementById('billNumber');
+        if (billInput) {
+            billInput.focus();
+            billInput.select();
+        }
     </script>
 </body>
 </html>

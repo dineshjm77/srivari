@@ -398,4 +398,4 @@ while ($row = $plan_result->fetch_assoc()) {
         });
     </script>
 </body>
-</html>
+</html>     
