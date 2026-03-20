@@ -1,25 +1,58 @@
 <?php
-// includes/topbar.php - FULL WORKING TOPBAR FOR SRI VARI CHITS
-session_start();
-include_once 'db.php';
+// includes/topbar.php - Universal Topbar for SRI VARI CHITS
+
+// Detect the correct base path
+$base_path = '';
+if (strpos($_SERVER['SCRIPT_NAME'], '/account/') !== false) {
+    $base_path = '../';
+} elseif (strpos($_SERVER['SCRIPT_NAME'], '/staff/') !== false) {
+    $base_path = '../';
+} else {
+    $base_path = '';
+}
+
+// Start session if not already started
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Include database connection using absolute path from document root
+$root_path = $_SERVER['DOCUMENT_ROOT'] . '/git/srivari/';
+if (!file_exists($root_path . 'includes/db.php')) {
+    // Try relative path
+    include_once $base_path . 'includes/db.php';
+} else {
+    include_once $root_path . 'includes/db.php';
+}
+
+// If still not found, try direct path
+if (!isset($conn) || !$conn) {
+    $dir = dirname(__FILE__);
+    $root_dir = dirname($dir);
+    include_once $root_dir . '/db.php';
+}
 
 // Today's date for due EMI count
 $today = date('Y-m-d');
 
 // Count today's unpaid EMIs
 $today_due_count = 0;
-$sql_count = "SELECT COUNT(*) as count
-              FROM emi_schedule es
-              JOIN members m ON es.member_id = m.id
-              WHERE es.status = 'unpaid' AND es.emi_due_date = ?";
-$stmt_count = $conn->prepare($sql_count);
-$stmt_count->bind_param("s", $today);
-$stmt_count->execute();
-$res_count = $stmt_count->get_result();
-if ($row = $res_count->fetch_assoc()) {
-    $today_due_count = $row['count'];
+if (isset($conn) && $conn) {
+    $sql_count = "SELECT COUNT(*) as count
+                  FROM emi_schedule es
+                  JOIN members m ON es.member_id = m.id
+                  WHERE es.status = 'unpaid' AND es.emi_due_date = ?";
+    $stmt_count = $conn->prepare($sql_count);
+    if ($stmt_count) {
+        $stmt_count->bind_param("s", $today);
+        $stmt_count->execute();
+        $res_count = $stmt_count->get_result();
+        if ($row = $res_count->fetch_assoc()) {
+            $today_due_count = $row['count'];
+        }
+        $stmt_count->close();
+    }
 }
-$stmt_count->close();
 ?>
 <style>
     .chit-brand {
@@ -106,39 +139,48 @@ $stmt_count->close();
                         </h5>
                         <div class="dropdown-divider"></div>
                         <?php
-                        $sql_due = "SELECT m.customer_name, es.emi_amount, es.id AS emi_id
-                                    FROM emi_schedule es
-                                    JOIN members m ON es.member_id = m.id
-                                    WHERE es.status = 'unpaid' AND es.emi_due_date = ?
-                                    ORDER BY m.customer_name
-                                    LIMIT 5";
-                        $stmt_due = $conn->prepare($sql_due);
-                        $stmt_due->bind_param("s", $today);
-                        $stmt_due->execute();
-                        $res_due = $stmt_due->get_result();
-                        ?>
-                        <?php if ($res_due->num_rows > 0): ?>
-                            <?php while ($due = $res_due->fetch_assoc()): ?>
-                                <a class="dropdown-item py-2" href="collect-emi.php?emi_id=<?= $due['emi_id']; ?>">
-                                    <div class="d-flex align-items-center">
-                                        <div class="flex-shrink-0">
-                                            <i class="iconoir-money-circle fs-4 text-success me-2"></i>
-                                        </div>
-                                        <div class="flex-grow-1">
-                                            <p class="mb-0 fs-13"><?= htmlspecialchars($due['customer_name']); ?></p>
-                                            <small class="text-muted">₹<?= number_format($due['emi_amount'], 2); ?></small>
-                                        </div>
+                        if (isset($conn) && $conn) {
+                            $sql_due = "SELECT m.customer_name, es.emi_amount, es.id AS emi_id
+                                        FROM emi_schedule es
+                                        JOIN members m ON es.member_id = m.id
+                                        WHERE es.status = 'unpaid' AND es.emi_due_date = ?
+                                        ORDER BY m.customer_name
+                                        LIMIT 5";
+                            $stmt_due = $conn->prepare($sql_due);
+                            if ($stmt_due) {
+                                $stmt_due->bind_param("s", $today);
+                                $stmt_due->execute();
+                                $res_due = $stmt_due->get_result();
+                                ?>
+                                <?php if ($res_due->num_rows > 0): ?>
+                                    <?php while ($due = $res_due->fetch_assoc()): ?>
+                                        <a class="dropdown-item py-2" href="<?= $base_path; ?>pay-emi.php?emi_id=<?= $due['emi_id']; ?>">
+                                            <div class="d-flex align-items-center">
+                                                <div class="flex-shrink-0">
+                                                    <i class="iconoir-money-circle fs-4 text-success me-2"></i>
+                                                </div>
+                                                <div class="flex-grow-1">
+                                                    <p class="mb-0 fs-13"><?= htmlspecialchars($due['customer_name']); ?></p>
+                                                    <small class="text-muted">₹<?= number_format($due['emi_amount'], 2); ?></small>
+                                                </div>
+                                            </div>
+                                        </a>
+                                    <?php endwhile; ?>
+                                <?php else: ?>
+                                    <div class="dropdown-item py-3 text-center text-muted">
+                                        <i class="iconoir-check fs-4 mb-2"></i>
+                                        <p class="mb-0">No due payments today</p>
                                     </div>
-                                </a>
-                            <?php endwhile; ?>
-                        <?php else: ?>
+                                <?php endif; ?>
+                                <?php $stmt_due->close();
+                            }
+                        } else { ?>
                             <div class="dropdown-item py-3 text-center text-muted">
-                                <i class="iconoir-check fs-4 mb-2"></i>
-                                <p class="mb-0">No due payments today</p>
+                                <i class="iconoir-error fs-4 mb-2"></i>
+                                <p class="mb-0">Database connection error</p>
                             </div>
-                        <?php endif; ?>
-                        <?php $stmt_due->close(); ?>
-                        <a href="collection-reports.php" class="dropdown-item text-center text-dark fs-13 py-2">
+                        <?php } ?>
+                        <a href="<?= $base_path; ?>collection-history.php" class="dropdown-item text-center text-dark fs-13 py-2">
                             View All <i class="iconoir-arrow-right fs-4 ms-1"></i>
                         </a>
                     </div>
@@ -171,10 +213,10 @@ $stmt_count->close();
                             </div>
                         </div>
                         <div class="dropdown-divider mt-0"></div>
-                        <a class="dropdown-item" href="profile.php"><i class="iconoir-user fs-5 me-2"></i> Profile</a>
-                        <a class="dropdown-item" href="settings.php"><i class="iconoir-settings fs-5 me-2"></i> Settings</a>
+                        <a class="dropdown-item" href="<?= $base_path; ?>profile.php"><i class="iconoir-user fs-5 me-2"></i> Profile</a>
+                        <a class="dropdown-item" href="<?= $base_path; ?>settings.php"><i class="iconoir-settings fs-5 me-2"></i> Settings</a>
                         <div class="dropdown-divider"></div>
-                        <a class="dropdown-item text-danger" href="logout.php"><i class="iconoir-log-out fs-5 me-2"></i> Logout</a>
+                        <a class="dropdown-item text-danger" href="<?= $base_path; ?>logout.php"><i class="iconoir-log-out fs-5 me-2"></i> Logout</a>
                     </div>
                 </li>
             </ul>

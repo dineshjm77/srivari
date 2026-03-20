@@ -19,6 +19,22 @@
                     </a>
                 </li>
 
+                <li class="nav-item">
+    <a class="nav-link" href="collection-history.php">
+        <i class="fas fa-calendar-alt menu-icon"></i>
+        <span>Collection History</span>
+    </a>
+</li>
+
+ <li class="nav-item">
+                    <a class="nav-link" href="pending-collections.php">
+                        <i class="fas fa-clock menu-icon"></i>
+                        <span>Pending Collections</span>
+                    </a>
+                </li>
+
+
+
                 <!-- Customers -->
                 <li class="nav-item">
                     <a class="nav-link" href="#sidebarCustomers" data-bs-toggle="collapse" role="button" aria-expanded="false" aria-controls="sidebarCustomers">
