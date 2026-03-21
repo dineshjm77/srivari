@@ -18,21 +18,12 @@
                     </a>
                 </li>
 
-                <!-- Customers -->
-                <li class="nav-item">
-                    <a class="nav-link" href="#sidebarCustomers" data-bs-toggle="collapse" role="button" aria-expanded="false" aria-controls="sidebarCustomers">
-                        <i class="fas fa-users menu-icon"></i>
-                        <span>Customers</span>
-                    </a>
-                    <div class="collapse" id="sidebarCustomers">
-                        <ul class="nav flex-column">
-                            <li class="nav-item"><a class="nav-link" href="add-member.php"><i class="fas fa-user-plus me-2"></i>Add Customer</a></li>
+                <li class="nav-item"><a class="nav-link" href="add-member.php"><i class="fas fa-user-plus me-2"></i>Add Customer</a></li>
                             <li class="nav-item"><a class="nav-link" href="manage-members.php"><i class="fas fa-user-cog me-2"></i>Manage Customers</a></li>
                             <li class="nav-item"><a class="nav-link" href="overdue-customers.php"><i class="fas fa-exclamation-triangle me-2"></i>Overdue Customers</a></li>
-                        </ul>
-                    </div>
-                </li>
 
+                <!-- Customers -->
+                
                
 
                 
